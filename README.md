@@ -61,6 +61,26 @@ ros2 run owl_vit_detector theta_driver
 ros2 run owl_vit_detector nanoowl_detector_node
 ```
 
+3️⃣ Cambiar la consulta (query) en tiempo real:
+
+```bash
+ros2 topic pub /input_query std_msgs/String "data: 'a person, a car, a bike'"
+```
+
+Puedes especificar los objetos que quieres detectar separándolos por comas.
+
+1️⃣ Lanzar el nodo de la cámara:
+
+```bash
+ros2 run owl_vit_detector theta_driver
+```
+
+2️⃣ Lanzar el nodo de detección:
+
+```bash
+ros2 run owl_vit_detector nanoowl_detector_node
+```
+
 ---
 
 ## 🖼️ **Tópicos Publicados**
