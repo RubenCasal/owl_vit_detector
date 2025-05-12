@@ -18,6 +18,9 @@ Vision Transformers (ViT) are a neural network architecture designed for compute
 * **Embedding:** Each patch is converted into a feature vector.
 * **Positional Encoding:** Positional information is added to preserve spatial structure.
 * **Transformer Encoder:** A set of self-attention blocks that capture global relationships in the image.
+<div align="center">
+  <img src="readme_images/visual_transformers.png" alt="Visual Transformers" width="650">
+</div>
 
 ---
 
@@ -32,6 +35,9 @@ The model is trained to align visual and textual representations in a shared lat
 * The *Text Transformer Encoder* processes natural language descriptions (e.g., 'bird sitting on a tree').
 * The *Vision Transformer Encoder* processes an image into *patches*, generating a visual embedding.
 * Both embeddings (*text and image*) are optimized with a *Contrastive Loss*, maximizing similarity between related pairs (image-text) and minimizing unrelated ones.
+<div align="center">
+  <img src="readme_images/pretraining.png" alt="owl_vit pretrained" width="450">
+</div>
 
 ---
 
@@ -43,6 +49,9 @@ Once the latent spaces are aligned, OWL-ViT can detect objects in images using t
 * Image regions are represented by the *Vision Transformer Encoder*.
 * Visual embeddings are projected into potential bounding boxes.
 * An MLP Head adjusts the final coordinates of each detected box.
+<div align="center">
+  <img src="readme_images/open_vocabulary.png" alt="Open Vocabulary detection" width="500">
+</div>
 
 ---
 
