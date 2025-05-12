@@ -50,7 +50,7 @@ Once the latent spaces are aligned, OWL-ViT can detect objects in images using t
 * Visual embeddings are projected into potential bounding boxes.
 * An MLP Head adjusts the final coordinates of each detected box.
 <div align="center">
-  <img src="readme_images/open_vocabulary.png" alt="Open Vocabulary detection" width="500">
+  <img src="readme_images/open_vocabulary.png" alt="Open Vocabulary detection" width="550">
 </div>
 
 ---
