@@ -1,133 +1,119 @@
 # NanoOWL Detection System
 
-Este proyecto implementa un sistema de detección en tiempo real utilizando **NanoOWL** optimizado con **TensorRT** para inferencias rápidas y eficientes sobre una cámara **Ricoh Theta Z1**. El sistema está desarrollado para **ROS 2 Humble** y se divide en dos nodos principales:
-
-1. **ThetaDriver Node (C++)**: Encargado de capturar el stream de la cámara Ricoh Theta y publicarlo en un tópico ROS 2.
-2. **NanoOWLDetectionNode (Python)**: Realiza la detección de objetos sobre el stream capturado y publica los resultados en tópicos ROS 2.
+This project implements a real-time detection system using **NanoOWL**, a lightweight model optimized for real-time detections through a **.engine** TensorRT engine. NanoOWL allows open-vocabulary detections, which means it can locate objects by simply describing them in natural language, even if they were not seen during training.
 
 ---
 
-## 🚀 **Características**
+## 🦉 **What is OWL-ViT?**
 
-* Detección en tiempo real sobre imágenes panorámicas 360°.
-* Optimización con TensorRT para inferencias rápidas.
-* Publicación de imágenes anotadas y bounding boxes en ROS 2.
-* Soporte para consultas dinámicas de objetos a detectar mediante un tópico ROS 2.
+OWL-ViT (Open-Vocabulary Learning Vision Transformer) is a multimodal object detection model designed to locate objects in images using natural language descriptions. Unlike traditional detectors limited to a fixed set of classes, OWL-ViT can identify objects not explicitly trained for by interpreting textual descriptions.
 
 ---
 
-## 🛠️ **Instalación**
+## 🔎 **Vision Transformers (ViT)**
+
+Vision Transformers (ViT) are a neural network architecture designed for computer vision tasks. Unlike convolutional networks, ViT divides an image into small sections called *patches* and applies a Transformer model to capture relationships between these sections.
+
+* **Patches:** The image is divided into small blocks (e.g., 16x16 pixels).
+* **Embedding:** Each patch is converted into a feature vector.
+* **Positional Encoding:** Positional information is added to preserve spatial structure.
+* **Transformer Encoder:** A set of self-attention blocks that capture global relationships in the image.
+
+---
+
+## 🦉 **OWL-ViT: Training and Inference Process**
+
+OWL-ViT follows three fundamental stages as illustrated in the provided image:
+
+### 1️⃣ **Image-level Contrastive Pre-training**
+
+The model is trained to align visual and textual representations in a shared latent space. In this phase:
+
+* The *Text Transformer Encoder* processes natural language descriptions (e.g., 'bird sitting on a tree').
+* The *Vision Transformer Encoder* processes an image into *patches*, generating a visual embedding.
+* Both embeddings (*text and image*) are optimized with a *Contrastive Loss*, maximizing similarity between related pairs (image-text) and minimizing unrelated ones.
+
+---
+
+### 2️⃣ **Transfer to Open-Vocabulary Detection**
+
+Once the latent spaces are aligned, OWL-ViT can detect objects in images using textual descriptions. The process is as follows:
+
+* Textual descriptions (*queries*) are converted into embeddings via the *Text Transformer Encoder*.
+* Image regions are represented by the *Vision Transformer Encoder*.
+* Visual embeddings are projected into potential bounding boxes.
+* An MLP Head adjusts the final coordinates of each detected box.
+
+---
+
+### 3️⃣ **Multimodal Inference**
+
+In this phase, OWL-ViT receives two inputs:
+
+* An image.
+* A list of natural language descriptions (*queries*).
+
+The model compares visual embeddings with textual ones. If a match is found, a *bounding box* is assigned to the identified object along with a confidence score. This process enables object localization in the image by simply describing them in natural language, even if they were not seen during training.
+
+🖼️ The image below graphically represents this process:
+
+---
+
+## 🛠️ **Clone and build**
 
 ```bash
-# Clonar el repositorio
-git clone <url-repositorio>
-cd <nombre-carpeta>
-
-# Instalar dependencias
-rosdep install --from-paths src --ignore-src -r -y
-colcon build
-
-# Configurar el entorno
+cd ~/ros2_ws/src
+git clone https://github.com/RubenCasal/owl_vit_detetor.git
+cd ~/ros2_ws
+colcon build --packages-select owl_vit_detector
 source install/setup.bash
 ```
 
 ---
 
-## ⚙️ **Configuración**
+## ▶️ **Execution**
 
-El nodo de detección se configura mediante parámetros en ROS 2:
-
-* `use4k`: Activa o desactiva el modo 4K de la cámara.
-* `serial`: Especifica el número de serie de la cámara Ricoh Theta Z1.
-* `camera_frame`: Define el nombre del frame para las imágenes publicadas.
-
-```bash
-ros2 run owl_vit_detector theta_driver --ros-args -p use4k:=true -p serial:=<número-de-serie> -p camera_frame:=camera_1
-```
-
----
-
-## ▶️ **Ejecución**
-
-1️⃣ Lanzar el nodo de la cámara:
+1️⃣ Launch the camera node:
 
 ```bash
 ros2 run owl_vit_detector theta_driver
 ```
 
-2️⃣ Lanzar el nodo de detección:
+2️⃣ Launch the detection node:
 
 ```bash
 ros2 run owl_vit_detector nanoowl_detector_node
 ```
 
-3️⃣ Cambiar la consulta (query) en tiempo real:
+3️⃣ Change the query in real-time:
 
 ```bash
 ros2 topic pub /input_query std_msgs/String "data: 'a person, a car, a bike'"
 ```
 
-Puedes especificar los objetos que quieres detectar separándolos por comas.
-
-1️⃣ Lanzar el nodo de la cámara:
-
-```bash
-ros2 run owl_vit_detector theta_driver
-```
-
-2️⃣ Lanzar el nodo de detección:
-
-```bash
-ros2 run owl_vit_detector nanoowl_detector_node
-```
+You can specify the objects you want to detect, separated by commas.
 
 ---
 
-## 🖼️ **Tópicos Publicados**
+## 🖼️ **Published Topics**
 
-* `/stitched_image`: Imagen panorámica capturada.
-* `/stitched_image_annotated`: Imagen anotada con las detecciones.
-* `/output_detections`: Lista de detecciones en formato ROS 2.
-
----
-
-## 📦 **Arquitectura del Proyecto**
-
-```
-📦 owl_vit_detector
-├── include
-│   └── owl_vit_detector
-│       └── theta_driver_lib.hpp
-├── src
-│   ├── theta_driver.cpp
-│   └── nanoowl_detector_node.py
-├── models
-│   └── owl_image_encoder_patch32.engine
-├── launch
-│   └── detection_launch.py
-├── CMakeLists.txt
-└── package.xml
-```
+* `/stitched_image`: Captured panoramic image.
+* `/stitched_image_annotated`: Annotated image with detections.
+* `/output_detections`: List of detections in ROS 2 format.
 
 ---
 
-## 🤖 **Tecnologías Utilizadas**
+## ✅ **Advantages and Applications**
 
-* ROS 2 Humble
-* TensorRT
-* OpenCV
-* GStreamer
-* NanoOWL
-* Ricoh Theta Z1
+* **Auto-labeling for datasets:** Thanks to its open-vocabulary detection capability, NanoOWL allows automatic image labeling by simply describing the objects to be detected.
+* **Detection in dynamic environments:** It is not limited to a fixed set of classes, making it ideal for scenarios where objects change constantly.
+* **Easy integration in ROS 2 pipelines:** The model publishes to ROS 2 topics, enabling its use in robotics and computer vision applications without major changes.
 
 ---
 
-## 🤝 **Contribución**
+## ⚠️ **Limitations**
 
-Si quieres contribuir, realiza un fork del proyecto, crea un branch para tus cambios y abre un PR detallando tus modificaciones.
+* **Heavy model:** Even though it is the 'Nano' version, its size is still considerable for low-resource embedded systems.
+* **Limited open-vocabulary detection:** The free-vocabulary detections are accurate, but not as robust as in larger models due to parameter reduction.
 
 ---
-
-## 📄 **Licencia**
-
-Este proyecto está bajo la licencia MIT.
