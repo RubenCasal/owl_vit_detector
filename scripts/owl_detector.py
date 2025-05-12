@@ -5,17 +5,18 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
-import torch
-from transformers import OwlViTProcessor, OwlViTForObjectDetection
+from nanoowl.owl_predictor import OwlPredictor
 import numpy as np
 from PIL import Image as PILImage
 import cv2
 import time
+import os
+from ament_index_python.packages import get_package_share_directory
 
 
-class OWLVitDetectionNode(Node):
+class NanoOWLDetectionNode(Node):
     def __init__(self):
-        super().__init__('owlvit_detector_node')
+        super().__init__('nanoowl_detector_node')
         
         # ROS 2 Subscriptions
         self.subscription = self.create_subscription(
@@ -43,30 +44,34 @@ class OWLVitDetectionNode(Node):
             10
         )
 
-        # Bridge and Model Loading
+        # Bridge
         self.bridge = CvBridge()
-        self.processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
-        self.model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
 
-        # 🚀 Mover el modelo a GPU si está disponible
-        if torch.cuda.is_available():
-            self.model = self.model.to("cuda")
-            self.device = "cuda"
-            self.get_logger().info("🚀 OWL-ViT detector cargado en GPU")
-        else:
-            self.device = "cpu"
-            self.get_logger().info("⚠️ OWL-ViT detector cargado en CPU")
+        # 🔎 **Carga del modelo TensorRT optimizado**
+        package_path = get_package_share_directory('owl_vit_detector')
+        model_path = os.path.join(package_path, 'owl_image_encoder_patch32.engine')
         
-        # Verificación
-        print(f"Modelo en: {next(self.model.parameters()).device}")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"No se encontró el motor optimizado en: {model_path}")
+        else:
+            self.get_logger().info(f"✅ Motor TensorRT encontrado en: {model_path}")
+        
+        # Inicialización del predictor de NanoOWL
+        self.predictor = OwlPredictor(
+            "google/owlvit-base-patch32",
+            image_encoder_engine=model_path
+        )
 
-        # Default query and logging
+        # 🚀 **Configuración por defecto**
         self.query = ["a person", "a car", "a bike"]
-        self.get_logger().info('OWL-ViT detector loaded and running.')
+        self.text_encodings = None  # Se generarán al primer frame
+        self.get_logger().info('NanoOWL cargado exitosamente con TensorRT 🚀')
 
     def query_listener_callback(self, msg):
+        """Callback para actualizar la query dinámica desde ROS 2."""
         self.query = [q.strip() for q in msg.data.split(",")]
-        self.get_logger().info(f'Updated query: {self.query}')
+        self.text_encodings = None  # Forzamos a recalcular los encodings
+        self.get_logger().info(f'🔄 Consulta actualizada: {self.query}')
 
     def listener_callback(self, msg):
         """
@@ -76,66 +81,72 @@ class OWLVitDetectionNode(Node):
 
         # Conversión del mensaje de ROS 2 a OpenCV
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
-        
-        # 🚀 Preprocesado directo con el processor
-        pil_image = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-        
-        # 🚀 Generación de inputs y movimiento a GPU
-        inputs = self.processor(text=[self.query], images=pil_image, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        pil_image = PILImage.fromarray(frame)
 
-        preproc_time = time.time()
+        # 🚀 Generación de encodings solo si no existen o se cambió la query
+        if not self.text_encodings:
+            self.text_encodings = self.predictor.encode_text(self.query)
+            self.get_logger().info(f"✅ Text encodings generados para: {self.query}")
     
-        # 🚀 Inferencia directa en GPU
-        with torch.no_grad():
-            outputs = self.model(**inputs)
+        # 🚀 Inferencia optimizada
+        results = self.predictor.predict(
+            image=pil_image, 
+            text=self.query, 
+            text_encodings=self.text_encodings,
+            threshold=0.2
+        )
 
-     
-        
-        # 🚀 Post-procesado
-        target_sizes = torch.Tensor([pil_image.size[::-1]]).to(self.device)
-        results = self.processor.post_process_object_detection(outputs, target_sizes=target_sizes, threshold=0.5)
-
-        # 🚀 Optimización: Anotación de imagen solo para detecciones válidas
+        # 🚀 Post-procesado y anotación de la imagen
         annotated_image = frame.copy()
         detections = Detection2DArray()
         detections.header = msg.header
 
-        for box, score, label in zip(results[0]["boxes"], results[0]["scores"], results[0]["labels"]):
-            if score > 0.3:  # Solo dibujar si el score es alto
-                box = [int(i) for i in box.tolist()]
-                label_name = self.query[label]
-                cv2.rectangle(annotated_image, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
-                cv2.putText(annotated_image, f'{label_name}: {score:.2f}', (box[0], box[1] - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        # 🔄 **Corrección: Desconectar del grafo de computación**
+        labels = results.labels.detach().cpu().numpy()
+        scores = results.scores.detach().cpu().numpy()
+        boxes = results.boxes.detach().cpu().numpy()
 
-                # Crear mensaje para ROS 2
-                detection = Detection2D()
-                detection.bbox.size_x = float(box[2] - box[0])
-                detection.bbox.size_y = float(box[3] - box[1])
-                detection.bbox.center.position.x = float((box[0] + box[2]) / 2)
-                detection.bbox.center.position.y = float((box[1] + box[3]) / 2)
+        for idx, label_id in enumerate(labels):
+            # Verificamos que el ID no exceda el tamaño de la lista
+            if label_id < len(self.query):
+                label = self.query[label_id]
+            else:
+                label = "Unknown"
+            
+            score = scores[idx]
+            bbox = boxes[idx]
 
-                hypothesis = ObjectHypothesisWithPose()
-                hypothesis.hypothesis.class_id = label_name
-                hypothesis.hypothesis.score = float(score)
+            # Dibujar en la imagen
+            cv2.rectangle(annotated_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+            cv2.putText(annotated_image, f'{label}: {score:.2f}', (int(bbox[0]), int(bbox[1]) - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-                detection.results.append(hypothesis)
-                detections.detections.append(detection)
+            # Crear mensaje para ROS 2
+            detection = Detection2D()
+            detection.bbox.size_x = float(bbox[2] - bbox[0])
+            detection.bbox.size_y = float(bbox[3] - bbox[1])
+            detection.bbox.center.position.x = float((bbox[0] + bbox[2]) / 2)
+            detection.bbox.center.position.y = float((bbox[1] + bbox[3]) / 2)
 
-        # Publicar detecciones
+            hypothesis = ObjectHypothesisWithPose()
+            hypothesis.hypothesis.class_id = label
+            hypothesis.hypothesis.score = float(score)
+
+            detection.results.append(hypothesis)
+            detections.detections.append(detection)
+
+        # Publicar detecciones y la imagen anotada
         self.detections_publisher.publish(detections)
-
-        # Convertir a mensaje de ROS 2
         annotated_msg = self.bridge.cv2_to_imgmsg(annotated_image, encoding='rgb8')
         annotated_msg.header = msg.header
         self.image_publisher.publish(annotated_msg)
 
-      
+        end_time = time.time()
+        self.get_logger().info(f"Inferencia completada en {end_time - start_time:.3f} segundos")
 
 def main(args=None):
     rclpy.init(args=args)
-    node = OWLVitDetectionNode()
+    node = NanoOWLDetectionNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
