@@ -44,51 +44,51 @@ class NanoOWLDetectionNode(Node):
             10
         )
 
-        # Bridge
+        # Bridge to convert ROS 2 Image messages to OpenCV
         self.bridge = CvBridge()
 
-        # 🔎 **Carga del modelo TensorRT optimizado**
+        # Load the optimized TensorRT model
         package_path = get_package_share_directory('owl_vit_detector')
         model_path = os.path.join(package_path, 'owl_image_encoder_patch32.engine')
         
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"No se encontró el motor optimizado en: {model_path}")
+            raise FileNotFoundError(f"Optimized engine not found at: {model_path}")
         else:
-            self.get_logger().info(f"✅ Motor TensorRT encontrado en: {model_path}")
+            self.get_logger().info(f"TensorRT engine found at: {model_path}")
         
-        # Inicialización del predictor de NanoOWL
+        # Initialize the NanoOWL predictor
         self.predictor = OwlPredictor(
             "google/owlvit-base-patch32",
             image_encoder_engine=model_path
         )
 
-        # 🚀 **Configuración por defecto**
+        # Default query configuration
         self.query = ["a person", "a car", "a bike"]
-        self.text_encodings = None  # Se generarán al primer frame
-        self.get_logger().info('NanoOWL cargado exitosamente con TensorRT 🚀')
+        self.text_encodings = None  # Generated on the first frame
+        self.get_logger().info('NanoOWL successfully loaded with TensorRT')
 
     def query_listener_callback(self, msg):
-        """Callback para actualizar la query dinámica desde ROS 2."""
+        """Callback to update the query dynamically from ROS 2."""
         self.query = [q.strip() for q in msg.data.split(",")]
-        self.text_encodings = None  # Forzamos a recalcular los encodings
-        self.get_logger().info(f'🔄 Consulta actualizada: {self.query}')
+        self.text_encodings = None  # Force text encodings recalculation
+        self.get_logger().info(f'Query updated: {self.query}')
 
     def listener_callback(self, msg):
         """
-        Callback para procesar la imagen y realizar la inferencia.
+        Callback to process the image and perform inference.
         """
         start_time = time.time()
 
-        # Conversión del mensaje de ROS 2 a OpenCV
+        # Convert the ROS 2 image message to OpenCV format
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
         pil_image = PILImage.fromarray(frame)
 
-        # 🚀 Generación de encodings solo si no existen o se cambió la query
+        # Generate text encodings if they do not exist or if the query changed
         if not self.text_encodings:
             self.text_encodings = self.predictor.encode_text(self.query)
-            self.get_logger().info(f"✅ Text encodings generados para: {self.query}")
+            self.get_logger().info(f"Text encodings generated for: {self.query}")
     
-        # 🚀 Inferencia optimizada
+        # Optimized inference
         results = self.predictor.predict(
             image=pil_image, 
             text=self.query, 
@@ -96,18 +96,18 @@ class NanoOWLDetectionNode(Node):
             threshold=0.2
         )
 
-        # 🚀 Post-procesado y anotación de la imagen
+        # Post-processing and image annotation
         annotated_image = frame.copy()
         detections = Detection2DArray()
         detections.header = msg.header
 
-        # 🔄 **Corrección: Desconectar del grafo de computación**
+        # Detach tensors from the computation graph to avoid memory leaks
         labels = results.labels.detach().cpu().numpy()
         scores = results.scores.detach().cpu().numpy()
         boxes = results.boxes.detach().cpu().numpy()
 
         for idx, label_id in enumerate(labels):
-            # Verificamos que el ID no exceda el tamaño de la lista
+            # Validate label index
             if label_id < len(self.query):
                 label = self.query[label_id]
             else:
@@ -116,12 +116,12 @@ class NanoOWLDetectionNode(Node):
             score = scores[idx]
             bbox = boxes[idx]
 
-            # Dibujar en la imagen
+            # Draw bounding box and label on the image
             cv2.rectangle(annotated_image, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
             cv2.putText(annotated_image, f'{label}: {score:.2f}', (int(bbox[0]), int(bbox[1]) - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-            # Crear mensaje para ROS 2
+            # Create detection message for ROS 2
             detection = Detection2D()
             detection.bbox.size_x = float(bbox[2] - bbox[0])
             detection.bbox.size_y = float(bbox[3] - bbox[1])
@@ -135,14 +135,14 @@ class NanoOWLDetectionNode(Node):
             detection.results.append(hypothesis)
             detections.detections.append(detection)
 
-        # Publicar detecciones y la imagen anotada
+        # Publish detections and the annotated image
         self.detections_publisher.publish(detections)
         annotated_msg = self.bridge.cv2_to_imgmsg(annotated_image, encoding='rgb8')
         annotated_msg.header = msg.header
         self.image_publisher.publish(annotated_msg)
 
         end_time = time.time()
-        self.get_logger().info(f"Inferencia completada en {end_time - start_time:.3f} segundos")
+        self.get_logger().info(f"Inference completed in {end_time - start_time:.3f} seconds")
 
 def main(args=None):
     rclpy.init(args=args)
