@@ -24,7 +24,7 @@ Vision Transformers (ViT) are a neural network architecture designed for compute
 
 ---
 
-## 🦉 **OWL-ViT: Training and Inference Process**
+## **OWL-ViT: Training and Inference Process**
 
 OWL-ViT follows three fundamental stages as illustrated in the provided image:
 
@@ -79,8 +79,9 @@ source install/setup.bash
 ```
 
 ---
+## ROS 2 Usage
 
-## ▶️ **Execution**
+### Run Nodes Separately
 
 1️⃣ Launch the camera node:
 
@@ -91,7 +92,7 @@ ros2 run owl_vit_detector theta_driver
 2️⃣ Launch the detection node:
 
 ```bash
-ros2 run owl_vit_detector nanoowl_detector_node
+ros2 run owl_vit_detector owl_detector.py
 ```
 
 3️⃣ Change the query in real-time:
@@ -102,13 +103,24 @@ ros2 topic pub /input_query std_msgs/String "data: 'a person, a car, a bike'"
 
 You can specify the objects you want to detect, separated by commas.
 
+### Launch Files
+
+Alternatively, use launch files:
+
+```bash
+ros2 launch owl_vit_detector owl_vit_launch.py
+```
 ---
 
-## 🖼️ **Published Topics**
+##  **Published Topics**
 
-* `/stitched_image`: Captured panoramic image.
-* `/stitched_image_annotated`: Annotated image with detections.
-* `/output_detections`: List of detections in ROS 2 format.
+
+| Topic Name              | Type                | Direction | Description                               |
+| ----------------------- | ------------------- | --------- | ----------------------------------------- |
+| `/stitched_image`       | `sensor_msgs/Image` | Sub       | Input panorama from Ricoh Theta Z1        |
+| `/stitched_image_annotated` | `sensor_msgs/Image` | Pub       | Annotated image with detections.    |
+| `/output_detections`          | ` vision_msgs/msg/Detection2DArray` | Pub       |  List of detections in ROS 2 format. |
+
 
 ---
 
