@@ -64,7 +64,9 @@ In this phase, OWL-ViT receives two inputs:
 
 The model compares visual embeddings with textual ones. If a match is found, a *bounding box* is assigned to the identified object along with a confidence score. This process enables object localization in the image by simply describing them in natural language, even if they were not seen during training.
 
-🖼️ The image below graphically represents this process:
+<div align="center">
+  <img src="readme_images/demo_owl_detector.gif" alt="demo owl vit detector" width="700">
+</div>
 
 ---
 
